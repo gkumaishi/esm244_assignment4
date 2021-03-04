@@ -1,0 +1,133 @@
+---
+title: "Task 2: Wild fish catch parameter estimation"
+author: "Grace Kumaishi"
+date: "3/2/2021"
+output: 
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(here)
+library(janitor)
+library(lubridate)
+library(broom)
+library(gt)
+```
+
+```{r}
+# Read in the data & tidy:
+fish_catch <- read_csv(here("data", "fish_catch.csv")) %>% 
+  clean_names() %>% 
+  slice(-(68:71)) %>% 
+  rename(year = world_wild_fish_catch_and_farmed_fish_production_1950_2012,
+         wild_catch = x2,
+         farmed_fish = x3,
+         total_fish_prod = x4) %>% 
+  slice(-(1:4)) %>% 
+  mutate(wild_catch = as.numeric(wild_catch)) %>% 
+  mutate(farmed_fish = as.numeric(farmed_fish)) %>% 
+  mutate(total_fish_prod = as.numeric(farmed_fish)) %>% 
+  mutate(year = as.numeric(year))
+```
+
+### 1) Exploratory graph of wild catch over time:
+
+```{r}
+ggplot(data = fish_catch) +
+  geom_line(aes(x = year, y = wild_catch)) +
+  theme_minimal() +
+  labs(x = "Year",
+       y = "Wild catch (megatons)")
+```
+
+**Visual trends:** This exploratory graph suggests that wild fish catch over time may be following a logistic growth model, which is defined by the equation:
+
+$P(t)=\frac{K}{1+Ae^{-kt}}$ 
+
+The logistic growth model describes a scenario in which a population approaches a carrying capacity (*K*). *A* is calculated using the equation $\frac{K-P_0}{P_0}$ and *k* is the growth rate constant. We can use this exploratory graph to estimate both the *K* and *A* values. The carrying capacity *K* appears to be approximately **95 megatons**. $P_{0}$ appears to be approximately **17 megatons**. We can estimate *A* by plugging in our estimates of *K* and $P_{0}$ to get a value of **4.6**. 
+
+```{r}
+## Find estimate for k:
+
+wild_catch_ln <- ggplot(data = fish_catch) + 
+  geom_line(aes(x = year, y = log(wild_catch))) +
+  theme_minimal() +
+  labs(x = "Year",
+       y = "ln(Wild catch)") 
+
+# Based on the graph of the log-transformed data set, linear growth appears to occur between the onset of the study and 1970, this is what we will use to estimate k.
+
+wild_catch_exp <- fish_catch %>% 
+  filter(year < 1970) %>% 
+  mutate(ln_wild_catch = log(wild_catch))
+
+# Model linear to get k estimate:
+# lm_k <- lm(ln_wild_catch ~ year, data = wild_catch_exp)
+# lm_k
+
+# Coefficient k is ~0.058
+```
+
+Based on the graph of the log-transformed data set (output hidden here), linear growth appears to occur between the onset of the study and 1970. This is what we will use to estimate k. Using a linear model, we estimate that the coefficient *k* is about **0.058**.
+
+### 2) Find parameters using nonlinear least squares:
+
+```{r, message = FALSE}
+wild_catch <- fish_catch %>% 
+  select(year, wild_catch) %>% 
+  mutate(year_new = 0:62) # set 1950 to 0
+
+wild_catch_nls <- nls(wild_catch ~ K/(1 + A*exp(-r*year_new)),
+                      data = wild_catch,
+                      start = list(K = 95, A = 4.6, r = 0.058),
+                      trace = FALSE)
+
+# Look at the model summary:
+# summary(wild_catch_nls)
+
+# Use broom:: to show model outputs in a tidier format:
+model_wild_catch <- broom::tidy(wild_catch_nls)
+```
+
+```{r}
+# Create a table:
+model_wild_catch %>% 
+  gt() 
+```
+
+<br>
+
+Using the estimated parameters above, we can write our model as:
+
+$$P(t) = \frac{100.3}{1+4.3e^{-0.07t}}$$
+
+### 3) Visualize model output against original data:
+
+```{r}
+# Make predictions for wild catch over all years of the original data frame:
+wild_catch_predict <- predict(wild_catch_nls)
+
+# Bind those predictions to the original data:
+wild_catch_complete <- data.frame(wild_catch, wild_catch_predict)
+
+# Plot them together:
+ggplot(data = wild_catch_complete, aes(x = year, y = wild_catch)) +
+  geom_point() +
+  geom_line(aes(x = year, y = wild_catch_predict)) +
+  theme_minimal() +
+  labs(x = "year",
+       y = "wild catch (megatons)")
+```
+
+### Citation:
+[Global wild fish catch and aquaculture production, compiled by Earth Policy Institute with 1950-2010 from U.N. Food and Agriculture Organization (FAO), Global Capture Production and Global Aquaculture Production, electronic databases, at www.fao.org/fishery/topic/16140/en.
+](https://drive.google.com/file/d/1sKjDqxbpWD7vd7Kt4tBNpl6pHEf_LnIe/view)
+
+
+
+
+
+

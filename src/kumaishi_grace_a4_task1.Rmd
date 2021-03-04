@@ -1,0 +1,78 @@
+---
+title: "Task 1: Agglomerative hierarchical clustering"
+author: "Grace Kumaishi"
+date: "3/2/2021"
+output: 
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(here)
+library(janitor)
+library(naniar)
+
+# Packages for cluster analysis:
+library(NbClust)
+library(cluster)
+library(factoextra)
+library(dendextend)
+library(ggdendro)
+```
+
+```{r, message = FALSE, warning = FALSE}
+# Read in the data:
+streams <- read_csv(here("data", "sbc_lter_registered_stream_chemistry.csv")) %>% 
+  replace_with_na_all(condition = ~.x == -999.0)
+
+# Wrangling for hierarchical clustering by site
+stream_means <- streams %>% 
+  group_by(site_code) %>% 
+  summarise(mean_nh4 = mean(nh4_uM, na.rm = TRUE),
+            mean_no3 = mean(no3_uM, na.rm = TRUE),
+            mean_po4 = mean(po4_uM, na.rm = TRUE),
+            mean_tdn = mean(tdn_uM, na.rm = TRUE),
+            mean_tdp = mean(tdp_uM, na.rm = TRUE),
+            mean_tcp = mean(tpc_uM, na.rm = TRUE),
+            mean_tpn = mean(tpn_uM, na.rm = TRUE),
+            mean_tpp = mean(tpp_uM, na.rm = TRUE),
+            mean_tss = mean(tss_mgperLiter, na.rm = TRUE),
+            mean_spec_cond = mean(spec_cond_uSpercm, na.rm = TRUE)) %>% 
+  drop_na() 
+
+# Scale mean values
+stream_scale <- stream_means %>% 
+  select(starts_with("mean_")) %>% 
+  scale()
+
+# Add rownames (stream names)
+rownames(stream_scale) <- stream_means$site_code
+
+# Find the Euclidean distances
+euc_distance <- dist(stream_scale, method = "euclidean")
+
+# Perform complete linkage agglomerative hierarchical clustering
+hc_complete <- hclust(euc_distance, method = "complete")
+
+# Plot it (base plot):
+# plot(hc_complete, cez = 0.6, hang = -1)
+```
+
+```{r, fig.align = "center"}
+# Plot dendrogram with ggplot:
+dendrogram_complete <- as.dendrogram(hc_complete)
+
+ggdendrogram(dendrogram_complete) +
+  theme_minimal() +
+  labs(x = "Site",
+       y = "",
+       title = "Santa Barbara Streams Dendrogram") +
+  theme(plot.title = element_text(hjust = .5)) 
+```
+
+**Figure 1**: Dendrogram based on stream chemistry in the Santa Barbara coastal drainage area. Water chemistry of individual sites was used to perform agglomerative hierarchical clustering by complete linkage. (Data: SBC LTER 2019).
+
+### Citation:
+[Santa Barbara Coastal LTER and J. Melack. 2019. SBC LTER: Land: Stream chemistry in the Santa Barbara Coastal drainage area, ongoing since 2000 ver 16. Environmental Data Initiative.](https://portal.edirepository.org/nis/mapbrowse?packageid=knb-lter-sbc.6.16)
